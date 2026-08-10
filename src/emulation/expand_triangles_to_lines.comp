@@ -1,0 +1,34 @@
+#version 450
+layout(local_size_x = 256) in;
+
+layout(set = 0, binding = 0) readonly buffer SrcIndices {
+    uint data[];
+} src;
+
+layout(set = 0, binding = 1) writeonly buffer DstIndices {
+    uint data[];
+} dst;
+
+layout(push_constant) uniform Push {
+    uint srcIndexOffset; // in indices (not bytes)
+    uint srcIndexCount;  // number of indices (not triangles)
+    uint triangleCount;
+} pc;
+
+void main() {
+    uint tid = gl_GlobalInvocationID.x;
+    if (tid >= pc.triangleCount) return;
+
+    uint baseIn = pc.srcIndexOffset + tid * 3u;
+    uint i0 = src.data[baseIn + 0u];
+    uint i1 = src.data[baseIn + 1u];
+    uint i2 = src.data[baseIn + 2u];
+
+    uint baseOut = tid * 6u;
+    dst.data[baseOut + 0u] = i0;
+    dst.data[baseOut + 1u] = i1;
+    dst.data[baseOut + 2u] = i1;
+    dst.data[baseOut + 3u] = i2;
+    dst.data[baseOut + 4u] = i2;
+    dst.data[baseOut + 5u] = i0;
+}
