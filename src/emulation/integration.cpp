@@ -1,5 +1,6 @@
 #include "integration.h"
 #include "fillmode_emulation.h"
+#include "ring_allocator.h"
 #include <cstring>
 #include <vector>
 #include <iostream>
@@ -9,6 +10,7 @@ namespace emu {
 
 static FillModeEmulation* g_emulator = nullptr;
 static VkDevice g_device = VK_NULL_HANDLE;
+static SimpleBufferManager* g_bufferManager = nullptr;
 
 VkResult init(VkDevice device, VkPhysicalDevice physicalDevice, uint32_t computeQueueFamilyIndex, const char* shaderSpvPath) {
     if (g_emulator) return VK_SUCCESS; // already initialized
@@ -65,14 +67,23 @@ VkResult init(VkDevice device, VkPhysicalDevice physicalDevice, uint32_t compute
     if (res != VK_SUCCESS) {
         delete g_emulator;
         g_emulator = nullptr;
+        return res;
     }
-    return res;
+
+    // create a simple buffer manager for temporary expanded index buffers
+    g_bufferManager = new SimpleBufferManager(device, physicalDevice);
+
+    return VK_SUCCESS;
 }
 
 void shutdown() {
     if (g_emulator) {
         delete g_emulator;
         g_emulator = nullptr;
+    }
+    if (g_bufferManager) {
+        delete g_bufferManager;
+        g_bufferManager = nullptr;
     }
     g_device = VK_NULL_HANDLE;
 }
@@ -148,6 +159,10 @@ void recordExpandTrianglesToLines(VkCommandBuffer cmd,
         return;
     }
     g_emulator->recordExpandTrianglesToLines(cmd, srcIndexBuffer, srcIndexOffsetInIndices, indexCount, indexType, dstBuffer, dstOffsetBytes);
+}
+
+SimpleBufferManager* getBufferManager() {
+    return g_bufferManager;
 }
 
 } // namespace emu
