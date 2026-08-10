@@ -3,6 +3,7 @@
 #include <cstring>
 #include <vector>
 #include <iostream>
+#include <cstdint>
 
 namespace emu {
 
@@ -12,7 +13,54 @@ static VkDevice g_device = VK_NULL_HANDLE;
 VkResult init(VkDevice device, VkPhysicalDevice physicalDevice, uint32_t computeQueueFamilyIndex, const char* shaderSpvPath) {
     if (g_emulator) return VK_SUCCESS; // already initialized
     g_device = device;
-    g_emulator = new FillModeEmulation(device, physicalDevice, computeQueueFamilyIndex);
+
+    // If caller passed UINT32_MAX, auto-detect a compute-capable queue family on the physical device.
+    uint32_t chosenQueueFamily = computeQueueFamilyIndex;
+    if (computeQueueFamilyIndex == UINT32_MAX) {
+        uint32_t qcount = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &qcount, nullptr);
+        if (qcount > 0) {
+            std::vector<VkQueueFamilyProperties> qprops(qcount);
+            vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &qcount, qprops.data());
+
+            bool found = false;
+            // prefer compute-only queue (compute but not graphics)
+            for (uint32_t i = 0; i < qcount; ++i) {
+                if ((qprops[i].queueFlags & VK_QUEUE_COMPUTE_BIT) && !(qprops[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)) {
+                    chosenQueueFamily = i;
+                    found = true;
+                    break;
+                }
+            }
+            // otherwise pick any compute-capable queue
+            if (!found) {
+                for (uint32_t i = 0; i < qcount; ++i) {
+                    if (qprops[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
+                        chosenQueueFamily = i;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            // fallback: pick graphics-capable queue
+            if (!found) {
+                for (uint32_t i = 0; i < qcount; ++i) {
+                    if (qprops[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                        chosenQueueFamily = i;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if (!found) chosenQueueFamily = 0;
+        } else {
+            chosenQueueFamily = 0;
+        }
+
+        std::cout << "emu: selected queue family index " << chosenQueueFamily << " for compute-based fillModeNonSolid emulation\n";
+    }
+
+    g_emulator = new FillModeEmulation(device, physicalDevice, chosenQueueFamily);
     VkResult res = g_emulator->init(shaderSpvPath);
     if (res != VK_SUCCESS) {
         delete g_emulator;
